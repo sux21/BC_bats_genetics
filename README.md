@@ -11,6 +11,9 @@ Hayward Lake and Stave Lake Lodge have different structure of bats. Can we see a
 How landscape and environmental factors affect population differentiation (landscape genetics)?
 - isolation by distance
 - landscape features to include: elevation (MYYU and MYLU use different elevation), human buildings (both species like it, may not see an effect), light (MYYU doesn't like it, but MYLU likes it), Look at Adrian's Pd article on what he used (https://pmc.ncbi.nlm.nih.gov/articles/PMC8001231/)
+- The Influence of Basin Fragmentation on the Genetic Structure of Neotropical Fishes. https://onlinelibrary.wiley.com/doi/10.1111/jbi.70092.
+
+
 
 Do a directional gene flow analysis: https://pmc.ncbi.nlm.nih.gov/articles/PMC4842207/
 
