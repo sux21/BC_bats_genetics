@@ -1,6 +1,9 @@
 # questions of the work
 
-How the population structure help conservation of bats? populations that are separated may need to be received probiotics independently. Can bats spread probiotics by contacting each other? 
+How the population structure help conservation of bats? 
+- Low population structure may indicate gene flow between populations (mating occurs between different populations).
+- This can cause white-nose syndrome disease to spread from affected to unaffected populations.
+- This can also cause the probiotics to spread from applied populatons to new populations. Can bats spread probiotics by contacting each other? 
 
 Choices of sample size and sampling site
 - For each site, increase sample sizes to at least 10
