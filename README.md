@@ -69,6 +69,8 @@ bat migration
 white-nose syndrome management
 - Whiting‐Fawcett, Flora, et al. "A Palearctic view of a bat fungal disease." Conservation Biology 39.1 (2025): e14265.
 
+vampire bat population structure:
+- A preliminary assessment of population genetic structure of the common vampire bat (Desmodus rotundus) in Colombia. https://peerj.com/articles/20306/.
 
 Genome assembly:
 - MYLU: Myoluc2.0 (https://www.ensembl.org/Myotis_lucifugus/Info/Annotation, https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000147115.1/), mMyoLuc1.0 (https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_048340685.1/)
