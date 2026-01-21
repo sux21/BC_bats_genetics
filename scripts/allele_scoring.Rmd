@@ -1,0 +1,450 @@
+---
+title: "allele_scoring"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+https://github.com/BranduffMcli/AutoGenescan/tree/main
+
+R packages to read more about: pooledpeaks, MsatAllele_1.0, allelematch
+
+
+Articles to read more about:  
+- Reliable Genotyping of Samples with Very Low DNA Quantities Using PCR 
+- How to track and assess genotyping errors in population genetics studies
+
+
+
+
+General allele scoring guideline:
+- Follow previous scoring practice. Fit into their allele class as best as I can. But if I have enough evidence there is new allele, the new allele can be recorded. Sequence the new allele to confirm. 
+
+```{r}
+source("scripts/remove_adjacent_peaks.R")
+```
+
+
+Load FSA data.
+```{r}
+
+
+osiris_out <- read.table("output/osiris_out/microsat_data/fragment_analysis_mobix_2024-02-02_plate1_1.tab"
+                         , sep = "\t"
+                         , header = TRUE
+                         , na.strings = "")
+
+
+```
+
+Rename channel to colour. https://www.geeksforgeeks.org/r-language/how-to-replace-specific-values-in-column-in-r-dataframe/
+```{r}
+channel <- c("Channel1-1", "Channel2-2", "Channel3-3", "Channel4-4")
+colour <- c("BLUE", "GREEN", "YELLOW", "RED")
+
+osiris_out$Locus <- with(osiris_out, replace(Locus, Locus %in% channel, colour))
+```
+
+
+Remove columns not used: BPS, ILS.BPS, Time
+```{r}
+osiris_out <- subset(osiris_out, select = -c(BPS, ILS.BPS, Time))
+```
+
+
+
+Add columns for batID and multiplex number.
+```{r}
+osiris_out$batID <- with(osiris_out, sub("--.*", "", Sample.Name))
+
+osiris_out$multiplex <- with(osiris_out, sub(".*--", "", Sample.Name))
+
+osiris_out$Locus <- paste(osiris_out$Locus, osiris_out$multiplex, sep = "_")
+```
+
+
+
+Step 1: for adjacent peaks <= 1.5 bp apart, only keep the peak with the highest RFU. 
+
+
+
+Make a function to remove low adjacent peaks for each channel (each row). 
+```{r}
+remove_low_adjacent_peaks <- function (file, row_num) {
+  # convert to numeric vector
+  peaks <- as.numeric(unlist(strsplit(file$Allele[row_num], ",")))
+  rfu <- as.numeric(unlist(strsplit(file$RFU[row_num], ",")))
+  
+  if (unique(is.na(peaks))) {
+    # no change to the vector if the channel is missing
+    peaks2 <- peaks
+    
+    rfu2 <- rfu
+    
+    output <- list(peaks2, rfu2)
+    
+  } else {
+    
+    # index of adjacent peaks
+    index <- which(diff(peaks) <= 1.5) # adjacent peaks are <= 1.5 bp apart
+    index2 <- unique(sort(c(index,index+1)))
+    
+    if (length(index) == 0) {
+    
+      # no change to the vector if no adjacent peaks
+      peaks2 <- peaks
+      
+      rfu2 <- rfu
+      
+      # convert back to character string
+      peaks2 <- paste(peaks2, collapse = ",")
+      
+      rfu2 <- paste(rfu2, collapse = ",")
+      
+      output <- list(peaks2, rfu2)
+    } else {
+      # continue if there are adjacent peaks
+      
+      # subset adjacent peaks
+      adj_peaks <- peaks[index2] # adjacent peaks
+      adj_rfu <- rfu[index2] # RFU of adjacent peaks
+      
+      # create group ID for adjacent peaks (peaks that are <= 1 bp are put in the same group)
+      adj_id <- c() 
+      
+      id = 1
+      
+      for (i in 1:length(adj_peaks)) {
+        
+        if (i == 1 ) { # first value (always in group 1)
+          adj_id <- append(adj_id, 1)
+        }
+        
+        if (i > 1 && i < length(adj_peaks)) { # middle values
+          if (adj_peaks[i] - adj_peaks[i-1] <= 1.5) {
+            adj_id <- append(adj_id, id)
+          } else {
+            id = id + 1
+            adj_id <- append(adj_id, id) 
+          }
+        }
+        
+        if (i == length(adj_peaks)) { # last value
+          if (adj_peaks[i] - adj_peaks[i-1] <= 1.5) {
+            adj_id <- append(adj_id, id)
+          } else {
+            id = id + 1
+            adj_id <- append(adj_id, id) 
+          }
+        }
+      }
+      
+      # in each group, find the maximum RFU
+      max_RFU <- aggregate(adj_rfu ~ adj_id, FUN = max)
+      
+      # find non-maximum RFU adjacent peaks
+      low_adj_peaks <- adj_peaks[! paste(adj_id, adj_rfu, sep = "-") %in% paste(max_RFU$adj_id, max_RFU$adj_rfu, sep = "-")]
+      
+      low_adj_rfu <- adj_rfu[! paste(adj_id, adj_rfu, sep = "-") %in% paste(max_RFU$adj_id, max_RFU$adj_rfu, sep = "-")]
+      
+      # only keep the adjacent peaks with maximum RFU
+      peaks2 <- peaks[! peaks %in% low_adj_peaks] # delete adjacent peaks that are not the maximum RFU  
+      
+      rfu2 <- rfu[! rfu %in% low_adj_rfu] # delete associated RFU as well
+      
+      # convert back to character string
+      peaks2 <- paste(peaks2, collapse = ",")
+      
+      rfu2 <- paste(rfu2, collapse = ",")
+      
+      # store output in a list
+      output <- list(peaks2, rfu2)
+    }  
+  }
+}
+```
+
+
+Loop through all channels (all rows).
+```{r}
+osiris_out2 <- osiris_out
+
+for (i in 1:nrow(osiris_out)) {
+  osiris_out2$Allele[[i]] <- remove_low_adjacent_peaks(osiris_out, i)[[1]]
+  
+  osiris_out2$RFU[[i]] <- remove_low_adjacent_peaks(osiris_out, i)[[2]]
+}
+```
+
+
+
+Step 2: Select the highest two peaks if the RFU of the second peak is at least half of the tallest peak. Otherwise, select only one peak. 
+
+
+Make a function for one channel.
+```{r}
+select_alleles <- function(file, row_num) {
+  # convert character string to numeric vector
+  peaks <- as.numeric(unlist(strsplit(file$Allele[row_num], ",")))
+  
+  rfu <- as.numeric(unlist(strsplit(file$RFU[row_num], ",")))
+  
+  if (unique(is.na(peaks))) {
+    # no change to the vector if the channel is missing or there is only one value
+    peaks2 <- peaks
+    
+    rfu2 <- rfu
+    
+    output <- list(peaks2, rfu2)
+    
+  } else {
+    # no change to the vector if there is only one value
+    if (length(peaks) == 1) {
+      peaks2 <- as.character(peaks)
+      
+      rfu2 <- as.character(rfu)
+      
+      output <- list(peaks2, rfu2)
+      
+    } else {
+      # sort RFU in decreasing order, so the first and second values are the two highest peaks
+      rfu_dec <- sort(rfu, decreasing = TRUE)
+      
+      if (rfu_dec[2]/rfu_dec[1] >= 0.5) {
+        # select both peaks if RFU of the second peak is >= 50% of RFU of the highest peak
+        rfu2 <- rfu_dec[1:2] 
+        
+        rfu2_index <- which(rfu %in% rfu2) 
+        
+        peaks2 <- peaks[rfu2_index]
+        
+        # convert back to character string
+        peaks2 <- paste(peaks2, collapse = ",")
+        
+        rfu2 <- paste(rfu2, collapse = ",")
+        
+        # store output in a list
+        output <- list(peaks2, rfu2)
+        
+      } else {
+        # select the highest peak if not
+        rfu2 <- rfu_dec[1]
+        
+        rfu2_index <- which(rfu %in% rfu2)
+        
+        peaks2 <- peaks[rfu2_index]
+        
+        # convert back to character string
+        peaks2 <- paste(peaks2, collapse = ",")
+        
+        rfu2 <- paste(rfu2, collapse = ",")
+        
+        # store output in a list
+        output <- list(peaks2, rfu2)
+        
+      }   
+    }
+  }
+}
+```
+
+
+
+
+Loop through all channels (all rows).
+```{r}
+osiris_out3 <- osiris_out2
+
+for (i in 1:nrow(osiris_out2)) {
+  osiris_out3$Allele[[i]] <- select_alleles(osiris_out2, i)[[1]]
+  
+  osiris_out3$RFU[[i]] <- select_alleles(osiris_out2, i)[[2]]
+}
+```
+
+
+
+Convert to wide format. 
+```{r}
+osiris_out3$Locus <- paste(osiris_out3$Locus, osiris_out3$multiplex, sep = "_")
+
+osiris_out4 <- ( osiris_out3 
+                 |> reshape(drop = c("Sample.Name", "RFU", "multiplex")
+                            , idvar = "batID"
+                            , timevar = c("Locus")
+                            , direction = "wide"
+                 )
+)
+```
+
+
+```{r}
+write.csv(osiris_out4, "./fragment_analysis_mobix_2025-11-26_plate2.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(Fragman)
+```
+
+
+```{r}
+?my.plants
+
+data(my.plants)
+
+my.plants <- my.plants[1:2]
+
+class(my.plants) <- "fsa_stored"
+
+plot(my.plants) # to visualize the raw data
+
+
+my.ladder <- c(50, 75, 100, 125, 129, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375)
+
+ladder.info.attach(stored=my.plants, ladder=my.ladder)
+
+overview2(my.inds=my.plants, channel = 2:3, ladder=my.ladder, init.thresh=1000)
+
+
+my.panel <- overview2(my.inds=my.plants, channel = 3, 
+                    ladder=my.ladder, init.thresh=1000, 
+                    xlim=c(160,190))
+
+my.panel
+
+res <- score.markers(my.inds=my.plants, channel = 3, panel=my.panel$channel_3,
+                ladder=my.ladder, electro=FALSE)
+
+
+# My data
+
+
+
+```
+
+
+
+Load data.
+```{r}
+folder <- "E://BC_bats_genetics/data/microsat_data/fragment_analysis_mobix_2025-11-26_plate2"
+
+my.samples <- storing.inds(folder)
+```
+
+
+
+Match ladder. Out size standard is GeneScan 600 LIZ. https://www.thermofisher.com/order/catalog/product/4408399. 
+```{r}
+my.ladder <- c(20, 40, 60, 80, 100, 114, 120, 140, 160, 180, 200, 214, 220, 240, 250, 260, 280, 300, 314, 320, 340, 360, 380, 400, 414, 420, 440, 460, 480, 500, 514, 520, 540, 560, 580, 600)
+
+ladder.info.attach(stored=my.samples, ladder=my.ladder)
+```
+
+
+
+Split data  by multiplex. 
+```{r}
+my.samples_M3 <- my.samples[grep("M3", names(my.samples))]
+```
+
+
+
+Define a panel. Do it for the 4 channels separately.
+```{r}
+my.panel_M3 <- overview2(my.inds=my.samples_M3, channel = 1, 
+                         ladder=my.ladder, init.thresh=1000)
+my.panel_M3
+```
+
+
+Score the samples. 
+```{r}
+res <- score.markers(my.inds=my.samples_M3, channel = 1, panel=my.panel_M3$channel_1,
+                     ladder=my.ladder, electro=F)
+```
+
+
+
+
+Try script from https://github.com/BranduffMcli/AutoGenescan/tree/main
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
