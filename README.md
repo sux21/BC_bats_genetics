@@ -79,3 +79,11 @@ Genome assembly:
 
 
 
+
+
+OSRIRIS settings:
+- Set up operating procedure: Tools > Lab Settings > Click New > Select LaneStandardOnly_5, enter "Myotis" for new procedure name > Under General tab, Internal Lane Standard: ABI-LIZ-600-100-TO-600, keep other options unchanged > Under Thresholds tab, enter 1000 in the Analysis Threshold (RFU) at Sample. This should automatically enter 1000 for the 4 colors. Keep the Ladder and ILS at 150. Keep all other options unchanged > Click Apply. 
+- To do analysis, go to File > New Analysis... > Choose your input and output directories, double check the Operating Procedure Name is Myotis and Minimum RFU for Analysis, Detection, Interlocus are 1000 for Sample and the 4 colors. 
+- Set up export of results to tab delimited file: Tools > Export File Settings > Select SpreadSheetUtils.xsl for XSL file, keep other options unchanged, click Next > Keep parameter settings unchanged, click Next. 
+- After running the analysis, results can be exported by the following steps: File > Export Spreadsheet... > Check the following options: Show Channel Number In Column Heading, Include Pos Controls, Include Neg. Controls, Include Ladder Samples, Include Disabled Samples. Keep other options unchanged.
+
